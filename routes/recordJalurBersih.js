@@ -5,6 +5,7 @@ import { pool } from "../db.js";
 /**
  * 1️⃣ GET /record-jalur-bersih
  * Optional filters: ?tanggal=YYYY-MM&jalur_id=123
+ * sort by column tanggal desc
  */
 router.get("/", async (req, res, next) => {
   try {
@@ -23,6 +24,7 @@ router.get("/", async (req, res, next) => {
       FROM record_jalur_bersih
       WHERE TO_CHAR(tanggal, 'YYYY-MM') = $1
         AND jalur_id = $2
+      ORDER BY tanggal DESC
       `,
       [tanggal, jalur_id]
     );
@@ -64,7 +66,7 @@ router.delete("/:id", async (req, res, next) => {
  * 3️⃣ PATCH /record-jalur-bersih/:id
  * Body: { stand_awal, stand_akhir, keterangan }
  */
-router.patch("/:id", async (req, res, next) => {
+router.put("/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
     const { stand_awal, stand_akhir, keterangan } = req.body;
@@ -85,6 +87,56 @@ router.patch("/:id", async (req, res, next) => {
     res
       .status(200)
       .json({ success: true, message: "Record updated", data: result.rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * 2️⃣ POST /record-jalur-bersih
+ * Create a new record
+ */
+router.post("/", async (req, res, next) => {
+  try {
+    const { stand_awal, stand_akhir, keterangan, tanggal, jalur_id } = req.body;
+
+    // 🧠 Validate input
+    if (!stand_awal || !stand_akhir || !tanggal || !jalur_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields.",
+      });
+    }
+
+    // 🧠 Check duplicate by tanggal + jalur_id
+    const duplicate = await pool.query(
+      `SELECT id FROM record_jalur_bersih WHERE tanggal = $1 AND jalur_id = $2`,
+      [tanggal, jalur_id]
+    );
+
+    if (duplicate.rows.length > 0) {
+      return res.status(409).json({
+        success: false,
+        message: "Data dengan tanggal dan jalur tersebut sudah ada.",
+      });
+    }
+
+    // 🧠 Insert new record
+    const result = await pool.query(
+      `
+      INSERT INTO record_jalur_bersih
+      (stand_awal, stand_akhir, keterangan, tanggal, jalur_id)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *
+      `,
+      [stand_awal, stand_akhir, keterangan, tanggal, jalur_id]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Record created successfully.",
+      data: result.rows[0],
+    });
   } catch (err) {
     next(err);
   }
